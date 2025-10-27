@@ -114,100 +114,124 @@ export function dbscan(points: Point[], epsilon: number, minPts: number): Point[
   return result;
 }
 
-// HDBSCAN Clustering (Simplified version based on mutual reachability)
+// HDBSCAN Clustering (Heuristic MST-based extraction)
 export function hdbscan(points: Point[], minClusterSize: number, minSamples: number): Point[] {
   const result = points.map(p => ({ ...p, cluster: -1 }));
-  
-  if (points.length < minClusterSize) {
-    return result;
+  const n = result.length;
+  if (n === 0) return result;
+
+  // Core distance: distance to kth neighbor (k = minSamples)
+  const coreDistances = new Array<number>(n).fill(Infinity);
+  for (let i = 0; i < n; i++) {
+    const dists: number[] = [];
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      dists.push(distance(result[i], result[j]));
+    }
+    dists.sort((a, b) => a - b);
+    coreDistances[i] = dists[Math.max(0, Math.min(dists.length - 1, minSamples - 1))] ?? Infinity;
   }
-  
-  // Calculate core distances (distance to kth nearest neighbor)
-  const coreDistances = result.map((point) => {
-    const distances = result
-      .map((p) => distance(point, p))
-      .filter(d => d > 0)
-      .sort((a, b) => a - b);
-    return distances[minSamples - 1] || Infinity;
-  });
-  
-  // Build mutual reachability graph
-  const mutualReachDist = (i: number, j: number): number => {
-    const dist = distance(result[i], result[j]);
-    return Math.max(dist, coreDistances[i], coreDistances[j]);
-  };
-  
-  // Use hierarchical clustering approach
-  // Start with each point as its own cluster
-  const clusters: Set<number>[] = result.map((_, i) => new Set([i]));
-  const clusterMap = result.map((_, i) => i);
-  
-  // Keep merging closest clusters until we hit the threshold
-  const maxDist = Math.max(...coreDistances.filter(d => d !== Infinity)) * 2;
-  
-  while (clusters.length > 1) {
-    let minDist = Infinity;
-    let mergeI = -1;
-    let mergeJ = -1;
-    
-    // Find closest pair of clusters
-    for (let i = 0; i < clusters.length; i++) {
-      if (clusters[i].size === 0) continue;
-      for (let j = i + 1; j < clusters.length; j++) {
-        if (clusters[j].size === 0) continue;
-        
-        // Single linkage: minimum distance between any two points
-        let minPairDist = Infinity;
-        for (const pi of clusters[i]) {
-          for (const pj of clusters[j]) {
-            const d = mutualReachDist(pi, pj);
-            if (d < minPairDist) {
-              minPairDist = d;
-            }
-          }
-        }
-        
-        if (minPairDist < minDist) {
-          minDist = minPairDist;
-          mergeI = i;
-          mergeJ = j;
-        }
+
+  const mrd = (i: number, j: number) => Math.max(distance(result[i], result[j]), coreDistances[i], coreDistances[j]);
+
+  // Build MST using Prim's algorithm on mutual reachability distances
+  const used = new Array<boolean>(n).fill(false);
+  const minW = new Array<number>(n).fill(Infinity);
+  const parent = new Array<number>(n).fill(-1);
+  minW[0] = 0;
+
+  const mstEdges: { u: number; v: number; w: number }[] = [];
+  for (let it = 0; it < n; it++) {
+    // Pick unused vertex with smallest key
+    let u = -1;
+    let best = Infinity;
+    for (let v = 0; v < n; v++) {
+      if (!used[v] && minW[v] < best) {
+        best = minW[v];
+        u = v;
       }
     }
-    
-    // Stop if distance is too large (creates natural separation)
-    if (minDist > maxDist * 0.6) {
-      break;
+    if (u === -1) break;
+    used[u] = true;
+    if (parent[u] !== -1) {
+      mstEdges.push({ u, v: parent[u], w: mrd(u, parent[u]) });
     }
-    
-    if (mergeI === -1 || mergeJ === -1) break;
-    
-    // Merge clusters
-    for (const p of clusters[mergeJ]) {
-      clusters[mergeI].add(p);
-      clusterMap[p] = mergeI;
+
+    // Relax neighbors
+    for (let v = 0; v < n; v++) {
+      if (used[v] || u === v) continue;
+      const w = mrd(u, v);
+      if (w < minW[v]) {
+        minW[v] = w;
+        parent[v] = u;
+      }
     }
-    clusters[mergeJ].clear();
   }
-  
-  // Filter out small clusters and assign final labels
-  let clusterIdx = 0;
-  const finalClusterMap = new Map<number, number>();
-  
-  clusters.forEach((cluster, idx) => {
-    if (cluster.size >= minClusterSize) {
-      finalClusterMap.set(idx, clusterIdx++);
-    } else {
-      finalClusterMap.set(idx, -1); // Noise
-    }
+
+  if (mstEdges.length === 0) return result;
+
+  // Try multiple cut thresholds and pick the one that keeps most points in clusters >= minClusterSize
+  const weights = mstEdges.map(e => e.w).sort((a, b) => a - b);
+  const candidates: number[] = [];
+  const quantiles = [0.4, 0.5, 0.6, 0.7, 0.8];
+  quantiles.forEach(q => {
+    const idx = Math.min(weights.length - 1, Math.max(0, Math.floor(q * weights.length)));
+    candidates.push(weights[idx]);
   });
-  
-  // Assign clusters to points
-  for (let i = 0; i < result.length; i++) {
-    const originalCluster = clusterMap[i];
-    result[i].cluster = finalClusterMap.get(originalCluster) ?? -1;
+  // Add median unique weights as additional candidates
+  if (weights.length > 5) candidates.push(weights[Math.floor(weights.length * 0.9)]);
+
+  let bestLabels = new Array<number>(n).fill(-1);
+  let bestKept = -1;
+  let bestClusters = 0;
+
+  for (const t of candidates) {
+    // Union-Find
+    const par = Array.from({ length: n }, (_, i) => i);
+    const sz = new Array<number>(n).fill(1);
+    const find = (x: number): number => (par[x] === x ? x : (par[x] = find(par[x])));
+    const unite = (a: number, b: number) => {
+      a = find(a); b = find(b);
+      if (a === b) return;
+      if (sz[a] < sz[b]) [a, b] = [b, a];
+      par[b] = a; sz[a] += sz[b];
+    };
+
+    for (const { u, v, w } of mstEdges) {
+      if (w <= t) unite(u, v);
+    }
+
+    // Component sizes
+    const compSize = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      const r = find(i);
+      compSize.set(r, (compSize.get(r) || 0) + 1);
+    }
+
+    // Build labels, filter small comps
+    let nextId = 0;
+    const compId = new Map<number, number>();
+    const labels = new Array<number>(n).fill(-1);
+    for (let i = 0; i < n; i++) {
+      const r = find(i);
+      const size = compSize.get(r) || 0;
+      if (size >= minClusterSize) {
+        if (!compId.has(r)) compId.set(r, nextId++);
+        labels[i] = compId.get(r)!;
+      }
+    }
+
+    const kept = labels.filter(l => l !== -1).length;
+    const clusters = nextId;
+    if (kept > bestKept || (kept === bestKept && clusters > bestClusters)) {
+      bestKept = kept;
+      bestClusters = clusters;
+      bestLabels = labels;
+    }
   }
-  
+
+  // Apply best labels
+  for (let i = 0; i < n; i++) result[i].cluster = bestLabels[i];
   return result;
 }
 
