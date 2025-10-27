@@ -2,12 +2,16 @@ import { useState, useEffect } from 'react';
 import { ClusterCanvas } from '@/components/ClusterCanvas';
 import { ControlPanel, Algorithm, Dataset } from '@/components/ControlPanel';
 import { StatsPanel } from '@/components/StatsPanel';
-import { Point, kMeans, dbscan, agglomerativeClustering } from '@/utils/clustering';
+import { Point, kMeans, dbscan, hdbscan, agglomerativeClustering } from '@/utils/clustering';
 import {
   generateRandomClusters,
   generateCircles,
   generateMoons,
   generateBlobs,
+  generateSpiral,
+  generateAnisotropic,
+  generateVariedDensity,
+  generateNoisyCircles,
 } from '@/utils/datasetGenerators';
 import { toast } from 'sonner';
 
@@ -39,6 +43,18 @@ const Index = () => {
       case 'blobs':
         newPoints = generateBlobs(numPoints, CANVAS_WIDTH, CANVAS_HEIGHT);
         break;
+      case 'spiral':
+        newPoints = generateSpiral(numPoints, CANVAS_WIDTH, CANVAS_HEIGHT);
+        break;
+      case 'anisotropic':
+        newPoints = generateAnisotropic(numPoints, CANVAS_WIDTH, CANVAS_HEIGHT);
+        break;
+      case 'varied':
+        newPoints = generateVariedDensity(numPoints, CANVAS_WIDTH, CANVAS_HEIGHT);
+        break;
+      case 'noisy-circles':
+        newPoints = generateNoisyCircles(numPoints, CANVAS_WIDTH, CANVAS_HEIGHT);
+        break;
     }
     
     setPoints(newPoints);
@@ -64,8 +80,13 @@ const Index = () => {
           break;
         case 'dbscan':
           clusteredPoints = dbscan(points, epsilon, minPts);
-          const numClusters = new Set(clusteredPoints.map(p => p.cluster).filter(c => c !== -1)).size;
-          toast.success(`DBSCAN found ${numClusters} clusters`);
+          const dbscanClusters = new Set(clusteredPoints.map(p => p.cluster).filter(c => c !== -1)).size;
+          toast.success(`DBSCAN found ${dbscanClusters} clusters`);
+          break;
+        case 'hdbscan':
+          clusteredPoints = hdbscan(points, k, minPts);
+          const hdbscanClusters = new Set(clusteredPoints.map(p => p.cluster).filter(c => c !== -1)).size;
+          toast.success(`HDBSCAN found ${hdbscanClusters} clusters`);
           break;
         case 'agglomerative':
           clusteredPoints = agglomerativeClustering(points, k);
@@ -93,7 +114,7 @@ const Index = () => {
             Clustering Algorithm Simulator
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Explore K-Means, DBSCAN, and Agglomerative clustering algorithms with interactive visualizations
+            Explore K-Means, DBSCAN, HDBSCAN, and Agglomerative clustering algorithms with interactive visualizations
           </p>
         </header>
 

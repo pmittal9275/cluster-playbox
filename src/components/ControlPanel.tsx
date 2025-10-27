@@ -5,8 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Sparkles, RefreshCw } from 'lucide-react';
 
-export type Algorithm = 'kmeans' | 'dbscan' | 'agglomerative';
-export type Dataset = 'random' | 'circles' | 'moons' | 'blobs';
+export type Algorithm = 'kmeans' | 'dbscan' | 'hdbscan' | 'agglomerative';
+export type Dataset = 'random' | 'circles' | 'moons' | 'blobs' | 'spiral' | 'anisotropic' | 'varied' | 'noisy-circles';
 
 interface ControlPanelProps {
   algorithm: Algorithm;
@@ -52,6 +52,7 @@ export const ControlPanel = ({
           <SelectContent>
             <SelectItem value="kmeans">K-Means</SelectItem>
             <SelectItem value="dbscan">DBSCAN</SelectItem>
+            <SelectItem value="hdbscan">HDBSCAN</SelectItem>
             <SelectItem value="agglomerative">Agglomerative</SelectItem>
           </SelectContent>
         </Select>
@@ -68,6 +69,10 @@ export const ControlPanel = ({
             <SelectItem value="circles">Concentric Circles</SelectItem>
             <SelectItem value="moons">Two Moons</SelectItem>
             <SelectItem value="blobs">Blobs</SelectItem>
+            <SelectItem value="spiral">Spiral</SelectItem>
+            <SelectItem value="anisotropic">Anisotropic</SelectItem>
+            <SelectItem value="varied">Varied Density</SelectItem>
+            <SelectItem value="noisy-circles">Noisy Circles</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -113,6 +118,33 @@ export const ControlPanel = ({
           </div>
           <div className="space-y-2">
             <Label>Min Points: {minPts}</Label>
+            <Slider
+              value={[minPts]}
+              onValueChange={(v) => setMinPts(v[0])}
+              min={2}
+              max={20}
+              step={1}
+              className="w-full"
+            />
+          </div>
+        </>
+      )}
+
+      {algorithm === 'hdbscan' && (
+        <>
+          <div className="space-y-2">
+            <Label>Min Cluster Size: {k}</Label>
+            <Slider
+              value={[k]}
+              onValueChange={(v) => setK(v[0])}
+              min={3}
+              max={30}
+              step={1}
+              className="w-full"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Min Samples: {minPts}</Label>
             <Slider
               value={[minPts]}
               onValueChange={(v) => setMinPts(v[0])}

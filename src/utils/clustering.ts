@@ -114,6 +114,88 @@ export function dbscan(points: Point[], epsilon: number, minPts: number): Point[
   return result;
 }
 
+// HDBSCAN Clustering (Simplified version)
+export function hdbscan(points: Point[], minClusterSize: number, minSamples: number): Point[] {
+  const result = points.map(p => ({ ...p, cluster: -1 }));
+  
+  // Calculate core distances
+  const coreDistances = result.map((point, idx) => {
+    const distances = result
+      .map((p, i) => ({ dist: distance(point, p), idx: i }))
+      .sort((a, b) => a.dist - b.dist);
+    return distances[minSamples] ? distances[minSamples].dist : Infinity;
+  });
+  
+  // Build minimum spanning tree using mutual reachability distance
+  const edges: { from: number; to: number; weight: number }[] = [];
+  
+  for (let i = 0; i < result.length; i++) {
+    for (let j = i + 1; j < result.length; j++) {
+      const dist = distance(result[i], result[j]);
+      const mutualReachDist = Math.max(dist, coreDistances[i], coreDistances[j]);
+      edges.push({ from: i, to: j, weight: mutualReachDist });
+    }
+  }
+  
+  // Sort edges by weight
+  edges.sort((a, b) => a.weight - b.weight);
+  
+  // Build clusters using union-find
+  const parent = Array.from({ length: result.length }, (_, i) => i);
+  const clusterSizes = Array(result.length).fill(1);
+  let clusterIdx = 0;
+  
+  const find = (x: number): number => {
+    if (parent[x] !== x) {
+      parent[x] = find(parent[x]);
+    }
+    return parent[x];
+  };
+  
+  const union = (x: number, y: number) => {
+    const rootX = find(x);
+    const rootY = find(y);
+    
+    if (rootX !== rootY) {
+      parent[rootY] = rootX;
+      clusterSizes[rootX] += clusterSizes[rootY];
+      return true;
+    }
+    return false;
+  };
+  
+  // Process edges to form clusters
+  const clusters = new Map<number, number>();
+  
+  for (const edge of edges) {
+    const rootFrom = find(edge.from);
+    const rootTo = find(edge.to);
+    
+    if (rootFrom !== rootTo) {
+      union(edge.from, edge.to);
+    }
+  }
+  
+  // Assign cluster labels based on size threshold
+  const componentMap = new Map<number, number>();
+  
+  for (let i = 0; i < result.length; i++) {
+    const root = find(i);
+    
+    if (!componentMap.has(root)) {
+      if (clusterSizes[root] >= minClusterSize) {
+        componentMap.set(root, clusterIdx++);
+      } else {
+        componentMap.set(root, -1); // Noise
+      }
+    }
+    
+    result[i].cluster = componentMap.get(root)!;
+  }
+  
+  return result;
+}
+
 // Agglomerative Clustering (Single Linkage)
 export function agglomerativeClustering(points: Point[], numClusters: number): Point[] {
   const result = points.map((p, idx) => ({ ...p, cluster: idx }));

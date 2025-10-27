@@ -134,3 +134,162 @@ export function generateBlobs(
   
   return points;
 }
+
+export function generateSpiral(
+  numPoints: number,
+  width: number,
+  height: number
+): Point[] {
+  const points: Point[] = [];
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const maxRadius = 180;
+  const noise = 8;
+  
+  // Two intertwined spirals
+  const pointsPerSpiral = Math.floor(numPoints / 2);
+  
+  for (let i = 0; i < pointsPerSpiral; i++) {
+    const t = (i / pointsPerSpiral) * 4 * Math.PI;
+    const radius = (t / (4 * Math.PI)) * maxRadius;
+    
+    // First spiral
+    const x1 = centerX + Math.cos(t) * radius + (Math.random() - 0.5) * noise;
+    const y1 = centerY + Math.sin(t) * radius + (Math.random() - 0.5) * noise;
+    points.push({ x: x1, y: y1 });
+    
+    // Second spiral (offset by π)
+    const x2 = centerX + Math.cos(t + Math.PI) * radius + (Math.random() - 0.5) * noise;
+    const y2 = centerY + Math.sin(t + Math.PI) * radius + (Math.random() - 0.5) * noise;
+    points.push({ x: x2, y: y2 });
+  }
+  
+  return points;
+}
+
+export function generateAnisotropic(
+  numPoints: number,
+  width: number,
+  height: number
+): Point[] {
+  const points: Point[] = [];
+  const centerX = width / 2;
+  const centerY = height / 2;
+  
+  // Create 3 elongated clusters with different orientations
+  const clusters = [
+    { cx: centerX - 150, cy: centerY - 100, angle: 0.3, scaleX: 80, scaleY: 30 },
+    { cx: centerX + 150, cy: centerY - 80, angle: -0.5, scaleX: 70, scaleY: 35 },
+    { cx: centerX, cy: centerY + 120, angle: 0, scaleX: 100, scaleY: 25 },
+  ];
+  
+  clusters.forEach((cluster) => {
+    const pointsPerCluster = Math.floor(numPoints / 3);
+    
+    for (let i = 0; i < pointsPerCluster; i++) {
+      // Generate point in unit circle
+      const angle = Math.random() * 2 * Math.PI;
+      const radius = Math.random();
+      
+      let x = Math.cos(angle) * radius;
+      let y = Math.sin(angle) * radius;
+      
+      // Scale
+      x *= cluster.scaleX;
+      y *= cluster.scaleY;
+      
+      // Rotate
+      const cos = Math.cos(cluster.angle);
+      const sin = Math.sin(cluster.angle);
+      const rotX = x * cos - y * sin;
+      const rotY = x * sin + y * cos;
+      
+      // Translate
+      points.push({
+        x: cluster.cx + rotX,
+        y: cluster.cy + rotY,
+      });
+    }
+  });
+  
+  return points;
+}
+
+export function generateVariedDensity(
+  numPoints: number,
+  width: number,
+  height: number
+): Point[] {
+  const points: Point[] = [];
+  const centerX = width / 2;
+  const centerY = height / 2;
+  
+  // Dense cluster
+  const densePoints = Math.floor(numPoints * 0.4);
+  for (let i = 0; i < densePoints; i++) {
+    const angle = Math.random() * 2 * Math.PI;
+    const radius = Math.random() * 50;
+    
+    points.push({
+      x: centerX - 150 + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius,
+    });
+  }
+  
+  // Medium density cluster
+  const mediumPoints = Math.floor(numPoints * 0.3);
+  for (let i = 0; i < mediumPoints; i++) {
+    const angle = Math.random() * 2 * Math.PI;
+    const radius = Math.random() * 70;
+    
+    points.push({
+      x: centerX + 150 + Math.cos(angle) * radius,
+      y: centerY - 50 + Math.sin(angle) * radius,
+    });
+  }
+  
+  // Sparse cluster
+  const sparsePoints = numPoints - densePoints - mediumPoints;
+  for (let i = 0; i < sparsePoints; i++) {
+    const angle = Math.random() * 2 * Math.PI;
+    const radius = Math.random() * 100;
+    
+    points.push({
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + 150 + Math.sin(angle) * radius,
+    });
+  }
+  
+  return points;
+}
+
+export function generateNoisyCircles(
+  numPoints: number,
+  width: number,
+  height: number
+): Point[] {
+  const points: Point[] = [];
+  const centerX = width / 2;
+  const centerY = height / 2;
+  
+  // Three concentric circles with varying noise
+  const circles = [
+    { radius: 60, noise: 10, points: Math.floor(numPoints * 0.3) },
+    { radius: 120, noise: 15, points: Math.floor(numPoints * 0.35) },
+    { radius: 180, noise: 20, points: Math.floor(numPoints * 0.35) },
+  ];
+  
+  circles.forEach((circle) => {
+    for (let i = 0; i < circle.points; i++) {
+      const angle = Math.random() * 2 * Math.PI;
+      const radius = circle.radius + (Math.random() - 0.5) * circle.noise * 2;
+      
+      points.push({
+        x: centerX + Math.cos(angle) * radius,
+        y: centerY + Math.sin(angle) * radius,
+      });
+    }
+  });
+  
+  return points;
+}
