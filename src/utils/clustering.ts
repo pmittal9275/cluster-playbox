@@ -114,83 +114,98 @@ export function dbscan(points: Point[], epsilon: number, minPts: number): Point[
   return result;
 }
 
-// HDBSCAN Clustering (Simplified version)
+// HDBSCAN Clustering (Simplified version based on mutual reachability)
 export function hdbscan(points: Point[], minClusterSize: number, minSamples: number): Point[] {
   const result = points.map(p => ({ ...p, cluster: -1 }));
   
-  // Calculate core distances
-  const coreDistances = result.map((point, idx) => {
+  if (points.length < minClusterSize) {
+    return result;
+  }
+  
+  // Calculate core distances (distance to kth nearest neighbor)
+  const coreDistances = result.map((point) => {
     const distances = result
-      .map((p, i) => ({ dist: distance(point, p), idx: i }))
-      .sort((a, b) => a.dist - b.dist);
-    return distances[minSamples] ? distances[minSamples].dist : Infinity;
+      .map((p) => distance(point, p))
+      .filter(d => d > 0)
+      .sort((a, b) => a - b);
+    return distances[minSamples - 1] || Infinity;
   });
   
-  // Build minimum spanning tree using mutual reachability distance
-  const edges: { from: number; to: number; weight: number }[] = [];
-  
-  for (let i = 0; i < result.length; i++) {
-    for (let j = i + 1; j < result.length; j++) {
-      const dist = distance(result[i], result[j]);
-      const mutualReachDist = Math.max(dist, coreDistances[i], coreDistances[j]);
-      edges.push({ from: i, to: j, weight: mutualReachDist });
-    }
-  }
-  
-  // Sort edges by weight
-  edges.sort((a, b) => a.weight - b.weight);
-  
-  // Build clusters using union-find
-  const parent = Array.from({ length: result.length }, (_, i) => i);
-  const clusterSizes = Array(result.length).fill(1);
-  let clusterIdx = 0;
-  
-  const find = (x: number): number => {
-    if (parent[x] !== x) {
-      parent[x] = find(parent[x]);
-    }
-    return parent[x];
+  // Build mutual reachability graph
+  const mutualReachDist = (i: number, j: number): number => {
+    const dist = distance(result[i], result[j]);
+    return Math.max(dist, coreDistances[i], coreDistances[j]);
   };
   
-  const union = (x: number, y: number) => {
-    const rootX = find(x);
-    const rootY = find(y);
+  // Use hierarchical clustering approach
+  // Start with each point as its own cluster
+  const clusters: Set<number>[] = result.map((_, i) => new Set([i]));
+  const clusterMap = result.map((_, i) => i);
+  
+  // Keep merging closest clusters until we hit the threshold
+  const maxDist = Math.max(...coreDistances.filter(d => d !== Infinity)) * 2;
+  
+  while (clusters.length > 1) {
+    let minDist = Infinity;
+    let mergeI = -1;
+    let mergeJ = -1;
     
-    if (rootX !== rootY) {
-      parent[rootY] = rootX;
-      clusterSizes[rootX] += clusterSizes[rootY];
-      return true;
-    }
-    return false;
-  };
-  
-  // Process edges to form clusters
-  const clusters = new Map<number, number>();
-  
-  for (const edge of edges) {
-    const rootFrom = find(edge.from);
-    const rootTo = find(edge.to);
-    
-    if (rootFrom !== rootTo) {
-      union(edge.from, edge.to);
-    }
-  }
-  
-  // Assign cluster labels based on size threshold
-  const componentMap = new Map<number, number>();
-  
-  for (let i = 0; i < result.length; i++) {
-    const root = find(i);
-    
-    if (!componentMap.has(root)) {
-      if (clusterSizes[root] >= minClusterSize) {
-        componentMap.set(root, clusterIdx++);
-      } else {
-        componentMap.set(root, -1); // Noise
+    // Find closest pair of clusters
+    for (let i = 0; i < clusters.length; i++) {
+      if (clusters[i].size === 0) continue;
+      for (let j = i + 1; j < clusters.length; j++) {
+        if (clusters[j].size === 0) continue;
+        
+        // Single linkage: minimum distance between any two points
+        let minPairDist = Infinity;
+        for (const pi of clusters[i]) {
+          for (const pj of clusters[j]) {
+            const d = mutualReachDist(pi, pj);
+            if (d < minPairDist) {
+              minPairDist = d;
+            }
+          }
+        }
+        
+        if (minPairDist < minDist) {
+          minDist = minPairDist;
+          mergeI = i;
+          mergeJ = j;
+        }
       }
     }
     
-    result[i].cluster = componentMap.get(root)!;
+    // Stop if distance is too large (creates natural separation)
+    if (minDist > maxDist * 0.6) {
+      break;
+    }
+    
+    if (mergeI === -1 || mergeJ === -1) break;
+    
+    // Merge clusters
+    for (const p of clusters[mergeJ]) {
+      clusters[mergeI].add(p);
+      clusterMap[p] = mergeI;
+    }
+    clusters[mergeJ].clear();
+  }
+  
+  // Filter out small clusters and assign final labels
+  let clusterIdx = 0;
+  const finalClusterMap = new Map<number, number>();
+  
+  clusters.forEach((cluster, idx) => {
+    if (cluster.size >= minClusterSize) {
+      finalClusterMap.set(idx, clusterIdx++);
+    } else {
+      finalClusterMap.set(idx, -1); // Noise
+    }
+  });
+  
+  // Assign clusters to points
+  for (let i = 0; i < result.length; i++) {
+    const originalCluster = clusterMap[i];
+    result[i].cluster = finalClusterMap.get(originalCluster) ?? -1;
   }
   
   return result;
